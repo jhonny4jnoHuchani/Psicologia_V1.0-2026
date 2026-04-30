@@ -278,7 +278,7 @@ export default function DetalleServicio() {
                 <Heart size={12} />
                 Servicio
               </span>
-              <span className="text-xs text-gray-400">ID: {item.serv_id}</span>
+              
             </div>
 
             {/* Título */}

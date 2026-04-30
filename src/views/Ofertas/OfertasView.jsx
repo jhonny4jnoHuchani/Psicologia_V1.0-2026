@@ -205,12 +205,7 @@ export default function OfertasView() {
                       )}
                       
                       {/* Badge ID */}
-                      <span 
-                        className="absolute top-3 left-3 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md"
-                        style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
-                      >
-                        Oferta #{item.ofertas_id}
-                      </span>
+
 
                       {/* Badge estado */}
                       {isActive && (

@@ -278,9 +278,7 @@ export default function DetalleOferta() {
 
             {/* Metadatos adicionales */}
             <div className="pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-400 flex items-center gap-1">
-                <span>ID: {item.ofertas_id}</span>
-              </p>
+
             </div>
           </motion.div>
         </div>

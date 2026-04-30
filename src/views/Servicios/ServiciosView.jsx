@@ -210,12 +210,7 @@ export default function ServiciosView() {
                       )}
                       
                       {/* Badge ID */}
-                      <span 
-                        className="absolute top-3 left-3 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-md"
-                        style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }}
-                      >
-                        Servicio #{item.serv_id}
-                      </span>
+
                     </div>
 
                     {/* Contenido */}

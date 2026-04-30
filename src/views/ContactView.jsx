@@ -18,7 +18,46 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Animaciones
+// ─── CACHÉ DE COORDENADAS ─────────────────────────────────────────────────────
+/**
+ * CORRECCIÓN (Hallazgo 2 — Rate Limiting Nominatim):
+ *
+ * Antes: cada carga de ContactView hacía una petición a Nominatim.
+ * Ahora: las coordenadas se guardan en localStorage la primera vez.
+ *        Las siguientes cargas leen del caché local → 0 peticiones a Nominatim.
+ *
+ * TTL: 30 días. Después de ese plazo se refresca automáticamente.
+ * Clave de caché: incluye la dirección, así si la dirección cambia en la API
+ * se geocodifica de nuevo.
+ */
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
+
+function getCachedCoords(direccion) {
+  try {
+    const raw = localStorage.getItem("upea_map_coords");
+    if (!raw) return null;
+    const { coords, address, timestamp } = JSON.parse(raw);
+    const expired = Date.now() - timestamp > CACHE_TTL_MS;
+    const sameAddress = address === direccion;
+    if (!expired && sameAddress) return coords;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedCoords(direccion, coords) {
+  try {
+    localStorage.setItem(
+      "upea_map_coords",
+      JSON.stringify({ coords, address: direccion, timestamp: Date.now() })
+    );
+  } catch {
+    // localStorage lleno u otro error — no es crítico
+  }
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 30 },
   whileInView: { opacity: 1, y: 0 },
@@ -26,36 +65,20 @@ const fadeUp = (delay = 0) => ({
   transition: { duration: 0.6, delay }
 });
 
-// Función para colorear PNG con filtros CSS
 const getColorFilter = (color) => {
-  // Convertir hex a RGB
   const r = parseInt(color.slice(1, 3), 16);
   const g = parseInt(color.slice(3, 5), 16);
   const b = parseInt(color.slice(5, 7), 16);
-  
-  // Filtros para colorear PNG blanco/negro
-  // Este filtro funciona mejor con PNG de un solo color (blanco o negro)
   return `brightness(0) saturate(100%) invert(${Math.round((1 - r/255) * 100)}%) sepia(100%) hue-rotate(${Math.round(Math.atan2(b, r) * 180 / Math.PI)}deg) saturate(500%)`;
 };
 
-// Componente FloatingDecorator mejorado
 const FloatingDecorator = ({ src, size, x, y, delay, duration = 8, rotate = true, color = null }) => (
   <motion.img
     src={src}
     alt="decorador"
     className="absolute pointer-events-none"
-    style={{ 
-      width: size, 
-      height: 'auto', 
-      left: x, 
-      top: y,
-      filter: color ? getColorFilter(color) : 'none'
-    }}
-    animate={{
-      y: [0, -25, 0],
-      rotate: rotate ? [0, 360] : 0,
-      scale: [1, 1.05, 1],
-    }}
+    style={{ width: size, height: 'auto', left: x, top: y, filter: color ? getColorFilter(color) : 'none' }}
+    animate={{ y: [0, -25, 0], rotate: rotate ? [0, 360] : 0, scale: [1, 1.05, 1] }}
     transition={{
       y: { duration, delay, repeat: Infinity, ease: "easeInOut" },
       rotate: rotate ? { duration: 20, repeat: Infinity, ease: "linear" } : {},
@@ -64,7 +87,6 @@ const FloatingDecorator = ({ src, size, x, y, delay, duration = 8, rotate = true
   />
 );
 
-// Componente Chip
 const Chip = ({ children, color }) => (
   <span
     className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full"
@@ -75,7 +97,6 @@ const Chip = ({ children, color }) => (
   </span>
 );
 
-// Componente SectionIn
 const SectionIn = ({ children, delay = 0, className = "" }) => (
   <motion.div
     initial={{ opacity: 0, y: 40 }}
@@ -88,7 +109,6 @@ const SectionIn = ({ children, delay = 0, className = "" }) => (
   </motion.div>
 );
 
-// Tarjeta de información de contacto
 const ContactCard = ({ icon: Icon, title, content, color, delay = 0 }) => (
   <motion.div
     {...fadeUp(delay)}
@@ -102,48 +122,67 @@ const ContactCard = ({ icon: Icon, title, content, color, delay = 0 }) => (
       <Icon size={22} style={{ color }} />
     </div>
     <h3 className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
-    <div className="text-gray-500 text-sm space-y-1">
-      {content}
-    </div>
+    <div className="text-gray-500 text-sm space-y-1">{content}</div>
   </motion.div>
 );
 
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 export default function ContactView() {
   const { institucion, portadas, loading } = useOutletContext();
-  const [mapPosition, setMapPosition] = useState([-16.5, -68.2]);
-  const [mapLoading, setMapLoading] = useState(true);
 
-  const colors = institucion?.colorinstitucion?.[0] || {};
-  const primaryColor = colors.color_primario || "#e68600";
+  // Coordenadas por defecto: UPEA El Alto
+  const DEFAULT_COORDS = [-16.5, -68.2];
+  const [mapPosition, setMapPosition] = useState(DEFAULT_COORDS);
+  const [mapLoading, setMapLoading]   = useState(true);
+
+  const colors         = institucion?.colorinstitucion?.[0] || {};
+  const primaryColor   = colors.color_primario   || "#e68600";
   const secondaryColor = colors.color_secundario || "#a75c06";
 
-  // Geocodificar la dirección
+  // ── Geocodificación con caché localStorage ────────────────────────────────
   useEffect(() => {
-    const direccion = institucion?.institucion_direccion || "Edificio del Área Social, 4to Piso. Av. Sucre, Zona Villa Esperanza, El Alto, Bolivia";
-    
+    if (loading) return;
+
+    const direccion = institucion?.institucion_direccion
+      || "Edificio del Área Social, 4to Piso. Av. Sucre, Zona Villa Esperanza, El Alto, Bolivia";
+
+    // 1️⃣ Intentar leer del caché primero
+    const cached = getCachedCoords(direccion);
+    if (cached) {
+      // ✅ Caché hit — sin llamada a Nominatim
+      setMapPosition(cached);
+      setMapLoading(false);
+      return;
+    }
+
+    // 2️⃣ Caché miss — llamar a Nominatim UNA sola vez y guardar resultado
     const geocodeAddress = async () => {
       try {
         setMapLoading(true);
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(direccion)}&format=json&limit=1`
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(direccion)}&format=json&limit=1`,
+          { headers: { "Accept-Language": "es" } }
         );
         const data = await response.json();
-        
-        if (data && data[0]) {
-          setMapPosition([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+
+        if (data?.[0]) {
+          const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+          setMapPosition(coords);
+          // Guardar en caché para evitar futuras peticiones
+          setCachedCoords(direccion, coords);
         }
       } catch (error) {
-        console.error('Error geocodificando dirección:', error);
+        console.error("Error geocodificando dirección:", error);
+        // Mantener coordenadas por defecto si falla
       } finally {
         setMapLoading(false);
       }
     };
 
-    if (!loading) {
-      geocodeAddress();
-    }
+    geocodeAddress();
   }, [institucion, loading]);
 
+  // ── Loading global ────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -159,72 +198,21 @@ export default function ContactView() {
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden relative">
-      
-      {/* ─── DECORACIONES FLOTANTES - 50% MÁS GRANDES, SIN OPACIDAD, CON COLORES ─── */}
-      
-      {/* Formas geométricas con color primario */}
-      <FloatingDecorator 
-        src="/png_decoradores/shape-01.png" 
-        size={120} x="3%" y="10%" delay={0} duration={8} 
-        color={primaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/shape-02.png" 
-        size={90} x="88%" y="20%" delay={1} duration={10} 
-        color={secondaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/shape-03.png" 
-        size={150} x="82%" y="65%" delay={2} duration={12} 
-        color={primaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/shape-04.png" 
-        size={105} x="8%" y="75%" delay={0.5} duration={9} 
-        color={secondaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/shape-05.png" 
-        size={75} x="12%" y="40%" delay={1.5} duration={7} 
-        color={primaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/shape-06.png" 
-        size={135} x="72%" y="45%" delay={3} duration={11} 
-        color={secondaryColor}
-      />
-      
-      {/* Decoradores oscuros */}
-      <FloatingDecorator 
-        src="/png_decoradores/dark-shape-09.png" 
-        size={180} x="-2%" y="55%" delay={2} duration={15} 
-        color={primaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/dark-shape-13.png" 
-        size={120} x="92%" y="80%" delay={4} duration={13} 
-        color={secondaryColor}
-      />
-      <FloatingDecorator 
-        src="/png_decoradores/dark-shape-14.png" 
-        size={100} x="5%" y="85%" delay={3} duration={14} 
-        color={primaryColor}
-      />
-      
 
+      {/* ─── DECORADORES FLOTANTES ──────────────────────────────────────────── */}
+      <FloatingDecorator src="/png_decoradores/shape-01.png"      size={120} x="3%"  y="10%" delay={0}   duration={8}  color={primaryColor}   />
+      <FloatingDecorator src="/png_decoradores/shape-02.png"      size={90}  x="88%" y="20%" delay={1}   duration={10} color={secondaryColor} />
+      <FloatingDecorator src="/png_decoradores/shape-03.png"      size={150} x="82%" y="65%" delay={2}   duration={12} color={primaryColor}   />
+      <FloatingDecorator src="/png_decoradores/shape-04.png"      size={105} x="8%"  y="75%" delay={0.5} duration={9}  color={secondaryColor} />
+      <FloatingDecorator src="/png_decoradores/shape-05.png"      size={75}  x="12%" y="40%" delay={1.5} duration={7}  color={primaryColor}   />
+      <FloatingDecorator src="/png_decoradores/shape-06.png"      size={135} x="72%" y="45%" delay={3}   duration={11} color={secondaryColor} />
+      <FloatingDecorator src="/png_decoradores/dark-shape-09.png" size={180} x="-2%" y="55%" delay={2}   duration={15} color={primaryColor}   />
+      <FloatingDecorator src="/png_decoradores/dark-shape-13.png" size={120} x="92%" y="80%" delay={4}   duration={13} color={secondaryColor} />
+      <FloatingDecorator src="/png_decoradores/dark-shape-14.png" size={100} x="5%"  y="85%" delay={3}   duration={14} color={primaryColor}   />
+      <FloatingDecorator src="/decoradores/cerebro3.png"          size={90}  x="75%" y="12%" delay={2}   duration={8}  color={primaryColor}   />
+      <FloatingDecorator src="/decoradores/preloader.png"         size={60}  x="7%"  y="25%" delay={0.8} duration={6}  color={secondaryColor} />
 
-      <FloatingDecorator 
-        src="/decoradores/cerebro3.png" 
-        size={90} x="75%" y="12%" delay={2} duration={8} 
-        color={primaryColor}
-      />
-      <FloatingDecorator 
-        src="/decoradores/preloader.png" 
-        size={60} x="7%" y="25%" delay={0.8} duration={6} 
-        color={secondaryColor}
-      />
-
-      {/* ─── HERO SECTION CON PORTADA ──────────────────────────────────────── */}
+      {/* ─── HERO ───────────────────────────────────────────────────────────── */}
       <section className="relative h-[320] md:h-[360px] lg:h-[400px] w-full overflow-hidden">
         {portadas && portadas.length > 0 && portadas[0]?.portada_imagen ? (
           <>
@@ -241,14 +229,12 @@ export default function ContactView() {
         ) : (
           <div className="absolute inset-0 bg-gradient-to-r from-gray-900 to-gray-800" />
         )}
-
         <div className="absolute inset-0 opacity-10 pointer-events-none">
           <div className="absolute top-20 left-10 w-72 h-72 bg-primary rounded-full blur-3xl" />
           <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary rounded-full blur-3xl" />
         </div>
-        
         <div className="relative h-full flex flex-col items-center justify-center max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -256,7 +242,7 @@ export default function ContactView() {
           >
             Contáctanos
           </motion.h1>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -264,7 +250,7 @@ export default function ContactView() {
           >
             Estamos para ayudarte. Comunícate con nosotros a través de cualquiera de nuestros canales.
           </motion.p>
-          <motion.div 
+          <motion.div
             initial={{ width: 0 }}
             animate={{ width: "6rem" }}
             transition={{ duration: 0.6, delay: 0.4 }}
@@ -274,7 +260,7 @@ export default function ContactView() {
         </div>
       </section>
 
-      {/* ─── INFORMACIÓN DE CONTACTO ────────────────────────────────────── */}
+      {/* ─── INFORMACIÓN DE CONTACTO ────────────────────────────────────────── */}
       <section className="relative py-24 overflow-hidden">
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <SectionIn className="text-center mb-12 space-y-3">
@@ -286,26 +272,13 @@ export default function ContactView() {
           </SectionIn>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Dirección */}
             {institucion?.institucion_direccion && (
-              <ContactCard
-                icon={MapPin}
-                title="Dirección"
-                color={primaryColor}
-                delay={0.1}
-                content={
-                  <p className="leading-relaxed">{institucion.institucion_direccion}</p>
-                }
+              <ContactCard icon={MapPin} title="Dirección" color={primaryColor} delay={0.1}
+                content={<p className="leading-relaxed">{institucion.institucion_direccion}</p>}
               />
             )}
-
-            {/* Teléfonos */}
             {(institucion?.institucion_telefono1 || institucion?.institucion_celular1) && (
-              <ContactCard
-                icon={Phone}
-                title="Teléfonos"
-                color={primaryColor}
-                delay={0.2}
+              <ContactCard icon={Phone} title="Teléfonos" color={primaryColor} delay={0.2}
                 content={
                   <div className="space-y-1">
                     {institucion.institucion_telefono1 && (
@@ -327,14 +300,8 @@ export default function ContactView() {
                 }
               />
             )}
-
-            {/* Correos electrónicos */}
             {(institucion?.institucion_correo1 || institucion?.institucion_correo2) && (
-              <ContactCard
-                icon={Mail}
-                title="Correos electrónicos"
-                color={primaryColor}
-                delay={0.3}
+              <ContactCard icon={Mail} title="Correos electrónicos" color={primaryColor} delay={0.3}
                 content={
                   <div className="space-y-1">
                     {institucion.institucion_correo1 && (
@@ -351,13 +318,7 @@ export default function ContactView() {
                 }
               />
             )}
-
-            {/* Horario de atención */}
-            <ContactCard
-              icon={Clock}
-              title="Horario de atención"
-              color={primaryColor}
-              delay={0.4}
+            <ContactCard icon={Clock} title="Horario de atención" color={primaryColor} delay={0.4}
               content={
                 <div className="space-y-2">
                   <div>
@@ -376,20 +337,12 @@ export default function ContactView() {
         </div>
       </section>
 
-      {/* ─── REDES SOCIALES ─────────────────────────────────────────────── */}
+      {/* ─── REDES SOCIALES ─────────────────────────────────────────────────── */}
       {(institucion?.institucion_facebook || institucion?.institucion_youtube || institucion?.institucion_twitter) && (
         <section className="py-16 bg-white relative">
-          <FloatingDecorator 
-            src="/png_decoradores/shape-07.png" 
-            size={90} x="3%" y="45%" delay={1} duration={10} 
-            color={primaryColor}
-          />
-          <FloatingDecorator 
-            src="/png_decoradores/shape-08.png" 
-            size={75} x="88%" y="25%" delay={2} duration={8} 
-            color={secondaryColor}
-          />
-          
+          <FloatingDecorator src="/png_decoradores/shape-07.png" size={90} x="3%"  y="45%" delay={1} duration={10} color={primaryColor}   />
+          <FloatingDecorator src="/png_decoradores/shape-08.png" size={75} x="88%" y="25%" delay={2} duration={8}  color={secondaryColor} />
+
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
             <SectionIn className="text-center mb-10 space-y-3">
               <Chip color={primaryColor}>Síguenos</Chip>
@@ -399,55 +352,35 @@ export default function ContactView() {
 
             <div className="flex flex-wrap items-center justify-center gap-4">
               {institucion.institucion_facebook && (
-                <motion.a
-                  {...fadeUp(0.1)}
-                  whileHover={{ scale: 1.1, y: -5 }}
-                  href={institucion.institucion_facebook}
-                  target="_blank"
-                  rel="noreferrer"
+                <motion.a {...fadeUp(0.1)} whileHover={{ scale: 1.1, y: -5 }}
+                  href={institucion.institucion_facebook} target="_blank" rel="noreferrer"
                   className="flex items-center gap-3 px-6 py-3 bg-[#1877f2] text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  <FaFacebook size={18} />
-                  Facebook
+                  <FaFacebook size={18} /> Facebook
                 </motion.a>
               )}
               {institucion.institucion_youtube && (
-                <motion.a
-                  {...fadeUp(0.2)}
-                  whileHover={{ scale: 1.1, y: -5 }}
-                  href={institucion.institucion_youtube}
-                  target="_blank"
-                  rel="noreferrer"
+                <motion.a {...fadeUp(0.2)} whileHover={{ scale: 1.1, y: -5 }}
+                  href={institucion.institucion_youtube} target="_blank" rel="noreferrer"
                   className="flex items-center gap-3 px-6 py-3 bg-[#ff0000] text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  <FaYoutube size={18} />
-                  YouTube
+                  <FaYoutube size={18} /> YouTube
                 </motion.a>
               )}
               {institucion.institucion_twitter && (
-                <motion.a
-                  {...fadeUp(0.3)}
-                  whileHover={{ scale: 1.1, y: -5 }}
-                  href={institucion.institucion_twitter}
-                  target="_blank"
-                  rel="noreferrer"
+                <motion.a {...fadeUp(0.3)} whileHover={{ scale: 1.1, y: -5 }}
+                  href={institucion.institucion_twitter} target="_blank" rel="noreferrer"
                   className="flex items-center gap-3 px-6 py-3 bg-black text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  <FaTwitter size={18} />
-                  X (Twitter)
+                  <FaTwitter size={18} /> X (Twitter)
                 </motion.a>
               )}
               {institucion.institucion_celular1 && (
-                <motion.a
-                  {...fadeUp(0.4)}
-                  whileHover={{ scale: 1.1, y: -5 }}
-                  href={`https://wa.me/${institucion.institucion_celular1}`}
-                  target="_blank"
-                  rel="noreferrer"
+                <motion.a {...fadeUp(0.4)} whileHover={{ scale: 1.1, y: -5 }}
+                  href={`https://wa.me/${institucion.institucion_celular1}`} target="_blank" rel="noreferrer"
                   className="flex items-center gap-3 px-6 py-3 bg-[#25D366] text-white rounded-full font-medium shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  <FaWhatsapp size={18} />
-                  WhatsApp
+                  <FaWhatsapp size={18} /> WhatsApp
                 </motion.a>
               )}
             </div>
@@ -455,24 +388,12 @@ export default function ContactView() {
         </section>
       )}
 
-      {/* ─── MAPA DE UBICACIÓN ──────────────────────────────────────────── */}
+      {/* ─── MAPA DE UBICACIÓN ──────────────────────────────────────────────── */}
       <section className="relative py-24 overflow-hidden">
-        <FloatingDecorator 
-          src="/png_decoradores/shape-09.png" 
-          size={150} x="82%" y="15%" delay={1} duration={12} 
-          color={primaryColor}
-        />
-        <FloatingDecorator 
-          src="/decoradores/cerebro3.png" 
-          size={75} x="8%" y="70%" delay={2} duration={9} 
-          color={secondaryColor}
-        />
-        <FloatingDecorator 
-          src="/png_decoradores/shape-12.png" 
-          size={110} x="5%" y="50%" delay={1.5} duration={10} 
-          color={primaryColor}
-        />
-        
+        <FloatingDecorator src="/png_decoradores/shape-09.png" size={150} x="82%" y="15%" delay={1}   duration={12} color={primaryColor}   />
+        <FloatingDecorator src="/decoradores/cerebro3.png"    size={75}  x="8%"  y="70%" delay={2}   duration={9}  color={secondaryColor} />
+        <FloatingDecorator src="/png_decoradores/shape-12.png" size={110} x="5%"  y="50%" delay={1.5} duration={10} color={primaryColor}   />
+
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
           <SectionIn className="text-center mb-10 space-y-3">
             <Chip color={primaryColor}>Ubicación</Chip>
