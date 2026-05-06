@@ -293,20 +293,7 @@ export default function DetallePublicacion() {
             {/* Documento adjunto */}
             {item.publicaciones_documento && item.publicaciones_documento !== "2" && (
               <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: `${primaryColor}08` }}>
-                <h3 className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2">
-                  <Download size={14} style={{ color: primaryColor }} />
-                  Documento adjunto
-                </h3>
-                <a
-                  href={item.publicaciones_documento}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 text-sm font-medium transition-all duration-300 hover:gap-3"
-                  style={{ color: primaryColor }}
-                >
-                  <span>Descargar documento</span>
-                  <ExternalLink size={14} />
-                </a>
+
               </div>
             )}
 

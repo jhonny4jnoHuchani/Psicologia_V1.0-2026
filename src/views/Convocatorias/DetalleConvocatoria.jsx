@@ -307,7 +307,9 @@ export default function DetalleConvocatoria() {
               </h3>
               <div 
                 className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.con_descripcion || "Sin descripción disponible") }}
+                
+          
+                dangerouslySetInnerHTML={{ __html: item.con_descripcion || "Sin descripción disponible" }}
               />
             </div>
 

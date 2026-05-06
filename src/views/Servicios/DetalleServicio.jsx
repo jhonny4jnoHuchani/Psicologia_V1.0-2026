@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useOutletContext } from "react-router";
+import DOMPurify from 'dompurify';
 import { motion } from "motion/react";
 import { 
   ArrowLeft, Phone, Calendar, Clock, 
@@ -336,7 +337,7 @@ export default function DetalleServicio() {
               </h3>
               <div 
                 className="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: formattedDesc }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formattedDesc) }}
               />
             </div>
 

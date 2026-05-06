@@ -324,7 +324,7 @@ export default function DetalleEvento() {
               </h3>
               <div 
                 className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: item.evento_descripcion || "Sin descripción disponible" }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.evento_descripcion || "Sin descripción disponible") }}
               />
             </div>
 
