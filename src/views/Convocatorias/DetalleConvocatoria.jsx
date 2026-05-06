@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useOutletContext } from "react-router";
+import DOMPurify from 'dompurify';
 import { motion } from "motion/react";
 import { 
   Calendar, Sparkles, 
@@ -236,7 +237,7 @@ export default function DetalleConvocatoria() {
                   }}
                 >
                   <Download size={16} />
-                  Descargar imagen (WEBP)
+                  Descargar imagen
                 </motion.button>
               )}
             </div>
@@ -306,17 +307,12 @@ export default function DetalleConvocatoria() {
               </h3>
               <div 
                 className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: item.con_descripcion || "Sin descripción disponible" }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.con_descripcion || "Sin descripción disponible") }}
               />
             </div>
 
             {/* Metadatos adicionales */}
-            <div className="pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-400 flex items-center gap-1">
-                <Tag size={10} />
-                ID: {item.idconvocatorias}
-              </p>
-            </div>
+
           </motion.div>
         </div>
       </div>

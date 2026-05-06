@@ -12,6 +12,7 @@
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "axios": "^1.14.0",
+    "dompurify": "^3.4.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",

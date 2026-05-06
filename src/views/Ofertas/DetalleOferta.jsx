@@ -268,13 +268,7 @@ export default function DetalleOferta() {
               </div>
             </div>
 
-            {/* Referencia */}
-            {item.ofertas_referencia && (
-              <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: `${primaryColor}08` }}>
-                <p className="text-xs text-gray-400 mb-1">Referencia</p>
-                <p className="text-sm font-medium text-gray-700">{item.ofertas_referencia}</p>
-              </div>
-            )}
+
 
             {/* Metadatos adicionales */}
             <div className="pt-4 border-t border-gray-100">

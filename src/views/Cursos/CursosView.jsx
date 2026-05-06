@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useOutletContext, Link } from "react-router";
+
+import DOMPurify from 'dompurify';
 import { motion } from "motion/react";
 import { 
   Calendar, Sparkles, ChevronRight, 
@@ -302,7 +304,7 @@ export default function CursosView({ tipo = "CURSOS" }) {
 
                       {item.det_descripcion && (
                         <p className="text-xs text-gray-500 line-clamp-2 mb-3">
-                          {item.det_descripcion.replace(/<[^>]*>/g, "").substring(0, 100)}...
+                          {DOMPurify.sanitize(item.det_descripcion, { ALLOWED_TAGS: [] }).substring(0, 100)}...
                         </p>
                       )}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useOutletContext } from "react-router";
+import DOMPurify from 'dompurify';
 import { motion } from "motion/react";
 import { 
   ArrowLeft, Calendar, Clock, MapPin, 
@@ -226,26 +227,6 @@ export default function DetalleCurso() {
               <div className="mt-4 space-y-3">
 
 
-                {item.det_grupo_whatssap && (
-                  <motion.a
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.35 }}
-                    href={item.det_grupo_whatssap}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-300"
-                    style={{ 
-                      backgroundColor: `${primaryColor}10`,
-                      color: primaryColor,
-                      border: `1px solid ${primaryColor}20`
-                    }}
-                  >
-                    <FaWhatsapp size={18} />
-                    Grupo de WhatsApp
-                    <ExternalLink size={14} />
-                  </motion.a>
-                )}
               </div>
             </motion.div>
           </div>
@@ -399,27 +380,19 @@ export default function DetalleCurso() {
                 </h3>
                 <div 
                   className="prose prose-sm max-w-none text-gray-600 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: item.det_descripcion || "Sin descripción disponible" }}
+                  dangerouslySetInnerHTML={{ 
+                    __html: DOMPurify.sanitize(item.det_descripcion || "Sin descripción disponible") 
+                  }}
                 />
               </div>
 
               {/* Código del curso */}
-              {item.det_codigo && (
-                <div className="mb-6 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                  <p className="text-xs text-gray-400">Código del curso</p>
-                  <p className="text-sm font-mono text-gray-700">{item.det_codigo}</p>
-                </div>
-              )}
+
 
               {/* Metadatos - Responsivos */}
               <div className="pt-4 border-t border-gray-100 flex flex-wrap justify-between items-center gap-3">
-                <p className="text-xs text-gray-400 flex items-center gap-1">
-                  <span>ID: {item.iddetalle_cursos_academicos}</span>
-                </p>
-                <div className="flex items-center gap-1 text-xs text-gray-400">
-                  <MessageCircle size={12} />
-                  <span>Para más información, contáctanos</span>
-                </div>
+ 
+
               </div>
             </motion.div>
           </div>
